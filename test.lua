@@ -9,33 +9,42 @@ local TARGET = 7
 local doors = {}
 local recorded = false
 
--- Scan : cherche DoorOpenerScript, puis fouille SON MODEL PARENT pour trouver Part + Prompt
+-- Scan ULTRA LARGE : cherche TOUS les ProximityPrompt dans Workspace.Halloween
+-- Garde ceux qui ont un DoorOpenerScript comme ancêtre
 local function scanDoors()
     doors = {}
-    for _, scriptObj in ipairs(Workspace:GetDescendants()) do
-        if scriptObj:IsA("Script") and scriptObj.Name == "DoorOpenerScript" then
-            local model = scriptObj.Parent -- Le Model "DoorOpener"
-            if model and model:IsA("Model") then
-                -- Cherche BasePart + ProximityPrompt DANS ce Model
-                for _, child in ipairs(model:GetDescendants()) do
-                    if child:IsA("BasePart") then
-                        local prompt = child:FindFirstChildWhichIsA("ProximityPrompt")
-                        if prompt then
-                            table.insert(doors, {part = child, prompt = prompt, model = model})
-                            print("[FARM] Porte verrouillée : " .. model:GetFullName() .. " | Part: " .. child.Name)
-                            break -- Une seule porte par model
-                        end
-                    end
+    local halloween = Workspace:FindFirstChild("Halloween")
+    if not halloween then warn("[FARM] Dossier 'Halloween' introuvable dans Workspace") return end
+
+    for _, obj in ipairs(halloween:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            -- Remonte les ancêtres pour voir s'il y a un DoorOpenerScript
+            local current = obj.Parent
+            local foundScript = false
+            for _ = 1, 6 do
+                if current and current.Name == "DoorOpenerScript" then foundScript = true break end
+                if current and current:FindFirstChild("DoorOpenerScript") then foundScript = true break end
+                current = current.Parent
+                if not current then break end
+            end
+
+            if foundScript then
+                -- Trouve la Part (Parent du Prompt ou Parent de l'Attachment)
+                local part = obj.Parent
+                if part:IsA("Attachment") then part = part.Parent end
+                if part:IsA("BasePart") then
+                    table.insert(doors, {part = part, prompt = obj})
+                    print("[FARM] Porte verrouillée : " .. part:GetFullName() .. " | Prompt: " .. obj.Name)
                 end
             end
         end
     end
+
     recorded = true
     print("[FARM] Enregistrement fini. " .. #doors .. " portes verrouillées.")
 end
 
 task.spawn(function()
-    -- Attend d'avoir 7 portes
     while not recorded or #doors < TARGET do
         scanDoors()
         if #doors >= TARGET then break end
@@ -43,11 +52,10 @@ task.spawn(function()
     end
 
     if #doors == 0 then
-        warn("[FARM] ERREUR : Aucune porte avec Prompt trouvée dans les Models DoorOpener.")
+        warn("[FARM] ERREUR : Aucun ProximityPrompt lié à DoorOpenerScript trouvé dans Halloween.")
         return
     end
 
-    -- Boucle farm
     while RUNNING do
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -59,7 +67,7 @@ task.spawn(function()
                         hrp.CFrame = door.part.CFrame + Vector3.new(0, 5, 0)
                         fireproximityprompt(door.prompt, 1)
                     end)
-                    print("[FARM] TP " .. i .. "/" .. #doors .. " -> Prompt fired (" .. door.part.Name .. ")")
+                    print("[FARM] TP " .. i .. "/" .. #doors .. " -> Fired (" .. door.part.Name .. ")")
                     task.wait(1.5)
                 end
             end
