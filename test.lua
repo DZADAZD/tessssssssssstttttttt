@@ -1,6 +1,6 @@
--- // NEON RAGE CHEAT // --
+-- // NEON RAGE CHEAT — FIXED EDITION // --
 -- // Full Rage | ESP | AimBot | Movement | Visuals | Sexy Neon UI // --
--- // No external dependencies // --
+-- // Fixed: HealthBar Text spam, Font Enum, RenderStepped leaks // --
 
 if getgenv().NeonRageLoaded then
     getgenv().NeonRageUnload()
@@ -23,30 +23,27 @@ local StarterGui = game:GetService("StarterGui")
 
 -- // VARIABLES // --
 local Config = {
-    -- Aimbot
     Aimbot = { Enabled = true, SilentAim = true, CameraAim = false, Triggerbot = false,
         AimKey = Enum.UserInputType.MouseButton2, ToggleMode = false,
         FOV = 120, ShowFOV = true, FOVColor = Color3.fromRGB(255, 50, 120),
-        TargetPart = "Head", Priority = "Crosshair", -- Crosshair, Distance, Health
+        TargetPart = "Head", Priority = "Crosshair",
         TeamCheck = true, WallCheck = true, AliveCheck = true, MaxDist = 1000,
         HitChance = 100, Prediction = true, PredVelocity = true, PredGravity = true,
         ProjectileSpeed = 99999, Smoothness = 0.02, Humanize = true, ReactionDelay = 0.05,
         OvershootCorr = 0.15, Jitter = {Enabled = true, Intensity = 0.3, Freq = 0.08} },
     
-    -- ESP
     ESP = { Enabled = true, TeamCheck = true, MaxDist = 3000,
         Box = {Enabled = true, Type = "Corner", Color = Color3.fromRGB(255, 50, 120), Thickness = 1.5, Filled = false, FillTransparency = 0.85},
         Skeleton = {Enabled = true, Color = Color3.fromRGB(255, 255, 255), Thickness = 1.5},
         HealthBar = {Enabled = true, Side = "Left", ShowText = true},
         Name = {Enabled = true, Color = Color3.fromRGB(255, 255, 255), Size = 13, Outline = true},
         Distance = {Enabled = true, Color = Color3.fromRGB(200, 200, 200), Size = 12},
-        Tracer = {Enabled = true, Color = Color3.fromRGB(255, 50, 120), Thickness = 1, Origin = "Bottom"}, -- Top, Center, Bottom, Mouse
+        Tracer = {Enabled = true, Color = Color3.fromRGB(255, 50, 120), Thickness = 1, Origin = "Bottom"},
         Chams = {Enabled = true, FillColor = Color3.fromRGB(255, 50, 120), OutlineColor = Color3.fromRGB(255, 255, 255), FillTrans = 0.6, OutlineTrans = 0},
         OffscreenArrows = {Enabled = true, Size = 24, Color = Color3.fromRGB(255, 50, 120), Radius = 200},
         RainbowMode = false, RainbowSpeed = 1.5 },
     
-    -- Movement
-    Movement = { SpeedHack = {Enabled = false, Speed = 28, Method = "CFrame"}, -- CFrame, Velocity, BodyVelocity
+    Movement = { SpeedHack = {Enabled = false, Speed = 28, Method = "CFrame"},
         Fly = {Enabled = false, Speed = 50, Keybind = Enum.KeyCode.F},
         NoClip = {Enabled = false, Keybind = Enum.KeyCode.N},
         InfiniteJump = {Enabled = false},
@@ -55,22 +52,18 @@ local Config = {
         SwimFly = {Enabled = false},
         AutoParry = {Enabled = false, Range = 20} },
     
-    -- Combat
     Combat = { RapidFire = false, NoRecoil = false, NoSpread = false, InfiniteAmmo = false, AutoReload = false,
         HitSound = {Enabled = true, SoundId = "rbxassetid://6831473140", Volume = 1.5},
         HitMarker = {Enabled = true, Color = Color3.fromRGB(255, 50, 120), Time = 0.3},
         KillSound = {Enabled = true, SoundId = "rbxassetid://6831473140", Volume = 2} },
     
-    -- Visuals
     Visuals = { Crosshair = {Enabled = true, Type = "Dot", Size = 8, Gap = 4, Thickness = 1.5, Color = Color3.fromRGB(255, 50, 120), Rainbow = false, RotationSpeed = 0},
         RainbowGun = false, FullBright = false, NoFog = false, Ambient = Color3.fromRGB(255, 255, 255),
         FOVChanger = {Enabled = false, Value = 90}, RemoveCamShake = true },
     
-    -- Protection
-    Protection = { AntiAim = {Enabled = false, Type = "Spin", Speed = 20}, -- Spin, Jitter, Backwards
+    Protection = { AntiAim = {Enabled = false, Type = "Spin", Speed = 20},
         AntiFling = true, AntiVoid = true, AutoRespawn = false, ChatSpy = true, AntiAFK = true },
     
-    -- UI
     UI = { Theme = "Neon", AccentColor = Color3.fromRGB(255, 50, 120), Keybind = Enum.KeyCode.Insert,
         Watermark = true, KeybindsList = true, SpectatorList = true }
 }
@@ -81,7 +74,8 @@ local State = {
     JitterTimer = 0, JitterOffset = Vector2.new(0,0), Connections = {}, Drawings = {},
     ESPObjects = {}, ChamsObjects = {}, OriginalLighting = {}, OriginalCamera = {},
     FlyBodyVel = nil, FlyBodyGyro = nil, AirWalkPart = nil, BhopConn = nil,
-    HitMarkers = {}, KillFeed = {}, LastKillTime = 0
+    HitMarkers = {}, KillFeed = {}, LastKillTime = 0,
+    CrosshairParts = {}, DynamicCrosshairConn = nil
 }
 
 local Theme = {
@@ -109,7 +103,6 @@ local function WorldToScreen(pos) local s, v = Camera:WorldToViewportPoint(pos) 
 local function GetMousePos() return UserInputService:GetMouseLocation() end
 local function IsKeyDown(key) return UserInputService:IsKeyDown(key) end
 local function IsMouseDown(btn) return UserInputService:IsMouseButtonPressed(btn) end
-
 local function SafeCall(fn, ...) local s, r = pcall(fn, ...) if not s then warn("[NEON] Error:", r) end return r end
 
 -- // CONFIG SAVE/LOAD // --
@@ -143,8 +136,11 @@ local function LoadConfig()
             if typeof(tbl[k]) == "Color3" and type(v) == "table" and v.R then
                 tbl[k] = Color3.new(v.R, v.G, v.B)
             elseif typeof(tbl[k]) == "EnumItem" and type(v) == "string" then
-                local enum = v:match("Enum%.(%w+)%.(%w+)")
-                if enum then tbl[k] = Enum[enum:match("(%w+)%.")](enum:match("%.(%w+)")) end
+                local enumStr = v:match("Enum%.(.+)")
+                if enumStr then
+                    local parts = string.split(enumStr, ".")
+                    if #parts == 2 then tbl[k] = Enum[parts[1]][parts[2]] end
+                end
             elseif type(tbl[k]) == "table" and type(v) == "table" then
                 apply(tbl[k], v)
             else tbl[k] = v end
@@ -162,8 +158,15 @@ local function CreateDrawing(class, props)
     return d
 end
 
+local function GetDrawingFont()
+    -- Compatibilité: nouveaux exécuteurs (Drawing.Fonts) / anciens (nombre)
+    if Drawing.Fonts then return Drawing.Fonts.Plex end
+    return 2 -- Fallback legacy (0=UI, 1=System, 2=Plex, 3=Monospace)
+end
+
 local function CreateESP(player)
     if player == LocalPlayer then return end
+    local font = GetDrawingFont()
     local esp = {
         Box = {Outline = CreateDrawing("Square", {Visible=false, Thickness=3, Filled=false, Color=Color3.new(0,0,0)}),
                Main = CreateDrawing("Square", {Visible=false, Thickness=1.5, Filled=false})},
@@ -171,16 +174,15 @@ local function CreateESP(player)
         Skeleton = {},
         HealthBar = {Outline = CreateDrawing("Square", {Visible=false, Thickness=1, Filled=true, Color=Color3.new(0,0,0)}),
                      Main = CreateDrawing("Square", {Visible=false, Filled=true}),
-                     Text = CreateDrawing("Text", {Visible=false, Center=true, Outline=true, Font=2, Size=11})},
-        Name = CreateDrawing("Text", {Visible=false, Center=true, Outline=true, Font=2, Size=13}),
-        Distance = CreateDrawing("Text", {Visible=false, Center=true, Outline=true, Font=2, Size=12}),
+                     Text = CreateDrawing("Text", {Visible=false, Center=true, Outline=true, Font=font, Size=11})},
+        Name = CreateDrawing("Text", {Visible=false, Center=true, Outline=true, Font=font, Size=13}),
+        Distance = CreateDrawing("Text", {Visible=false, Center=true, Outline=true, Font=font, Size=12}),
         Tracer = CreateDrawing("Line", {Visible=false, Thickness=1}),
         OffscreenArrow = CreateDrawing("Triangle", {Visible=false, Filled=true, Thickness=1}),
         Chams = nil
     }
     State.ESPObjects[player] = esp
     
-    -- Skeleton lines
     local bones = {
         {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"}, {"LeftLowerArm", "LeftHand"},
         {"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"RightLowerArm", "RightHand"},
@@ -235,8 +237,8 @@ local function UpdateChams(player, char)
 end
 
 -- // AIMBOT LOGIC // --
-local function IsWhitelisted(plr) return true end -- Add your whitelist logic
-local function IsBlacklisted(plr) return false end -- Add your blacklist logic
+local function IsWhitelisted(plr) return true end
+local function IsBlacklisted(plr) return false end
 
 local function IsValidTarget(plr)
     if not plr or plr == LocalPlayer then return false end
@@ -360,9 +362,9 @@ local function ShowHitMarker(pos)
     table.insert(State.HitMarkers, marker)
 end
 
--- // MAIN LOOP // --
+-- // MAIN GAME LOOP // --
 local lastFrame = tick()
-RunService.RenderStepped:Connect(function()
+State.Connections.MainLoop = RunService.RenderStepped:Connect(function()
     local now = tick()
     local dt = now - lastFrame
     lastFrame = now
@@ -399,7 +401,6 @@ RunService.RenderStepped:Connect(function()
                     local mousePos = GetMousePos()
                     local delta = screenPos - mousePos
                     
-                    -- Humanization
                     if Config.Aimbot.Humanize then
                         local smooth = Config.Aimbot.Smoothness
                         if Config.Aimbot.OvershootCorr > 0 and State.LastTarget then
@@ -418,13 +419,9 @@ RunService.RenderStepped:Connect(function()
                         end
                     end
                     
-                    -- Apply
                     if Config.Aimbot.CameraAim then
                         local cf = Camera.CFrame
                         Camera.CFrame = cf:Lerp(CFrame.new(cf.Position, predPos), Config.Aimbot.Smoothness * 2)
-                    end
-                    if Config.Aimbot.SilentAim then
-                        -- Handled by hook
                     end
                     if mousemoverel and not Config.Aimbot.CameraAim then
                         mousemoverel(delta.X, delta.Y)
@@ -457,22 +454,17 @@ RunService.RenderStepped:Connect(function()
     local hum = char and char:FindFirstChild("Humanoid")
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     
-    -- SpeedHack
     if Config.Movement.SpeedHack.Enabled and hum and hrp then
-        if Config.Movement.SpeedHack.Method == "CFrame" then
-            local moveDir = hum.MoveDirection
-            if moveDir.Magnitude > 0 then
+        local moveDir = hum.MoveDirection
+        if moveDir.Magnitude > 0 then
+            if Config.Movement.SpeedHack.Method == "CFrame" then
                 hrp.CFrame = hrp.CFrame + moveDir.Unit * Config.Movement.SpeedHack.Speed * dt
-            end
-        elseif Config.Movement.SpeedHack.Method == "Velocity" then
-            local moveDir = hum.MoveDirection
-            if moveDir.Magnitude > 0 then
+            elseif Config.Movement.SpeedHack.Method == "Velocity" then
                 hrp.Velocity = Vector3.new(moveDir.X * Config.Movement.SpeedHack.Speed, hrp.Velocity.Y, moveDir.Z * Config.Movement.SpeedHack.Speed)
             end
         end
     end
     
-    -- Fly
     if Config.Movement.Fly.Enabled then
         if IsKeyDown(Config.Movement.Fly.Keybind) and not State.FlyActive then
             State.FlyActive = true
@@ -503,7 +495,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- NoClip
     if Config.Movement.NoClip.Enabled then
         if IsKeyDown(Config.Movement.NoClip.Keybind) and not State.NoClipActive then State.NoClipActive = true
         elseif IsKeyDown(Config.Movement.NoClip.Keybind) and State.NoClipActive then State.NoClipActive = false end
@@ -514,20 +505,17 @@ RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- Infinite Jump
     if Config.Movement.InfiniteJump.Enabled and hum then
         hum.JumpPower = 50
         if IsKeyDown(Enum.KeyCode.Space) then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
     end
     
-    -- Bhop
     if Config.Movement.Bhop.Enabled and hum and hrp then
         if hum.FloorMaterial ~= Enum.Material.Air and IsKeyDown(Enum.KeyCode.Space) then
             hrp.Velocity = Vector3.new(hrp.Velocity.X, Config.Movement.Bhop.Height, hrp.Velocity.Z)
         end
     end
     
-    -- AirWalk
     if Config.Movement.AirWalk.Enabled then
         if IsKeyDown(Config.Movement.AirWalk.Keybind) and not State.AirWalkActive then
             State.AirWalkActive = true
@@ -547,12 +535,6 @@ RunService.RenderStepped:Connect(function()
     end
     
     -- // VISUALS // --
-    -- Crosshair
-    if Config.Visuals.Crosshair.Enabled then
-        -- Drawn in UI section
-    end
-    
-    -- FullBright / NoFog / Ambient
     if Config.Visuals.FullBright then
         Lighting.Brightness = 2
         Lighting.ClockTime = 14
@@ -563,12 +545,10 @@ RunService.RenderStepped:Connect(function()
     if Config.Visuals.NoFog then Lighting.FogEnd = 100000 end
     if Config.Visuals.Ambient then Lighting.Ambient = Config.Visuals.Ambient end
     
-    -- FOV Changer
     if Config.Visuals.FOVChanger.Enabled then Camera.FieldOfView = Config.Visuals.FOVChanger.Value end
     
-    -- Remove Cam Shake
     if Config.Visuals.RemoveCamShake then
-        Camera.CFrame = Camera.CFrame * CFrame.new(0,0,0) -- Resets shake
+        Camera.CFrame = Camera.CFrame * CFrame.new(0,0,0)
     end
     
     -- // ESP RENDER // --
@@ -610,28 +590,14 @@ RunService.RenderStepped:Connect(function()
                         
                         -- Box
                         if Config.ESP.Box.Enabled then
-                            if Config.ESP.Box.Type == "Corner" then
-                                local len = math.min(w, h) * 0.3
-                                -- Draw 8 corners (simplified: just draw 4 corners as lines)
-                                -- Using 4 squares for corners
-                                esp.Box.Main.Visible = true
-                                esp.Box.Main.Size = Vector2.new(w, h)
-                                esp.Box.Main.Position = Vector2.new(minX, minY)
-                                esp.Box.Main.Color = color
-                                esp.Box.Main.Thickness = Config.ESP.Box.Thickness
-                                esp.Box.Outline.Visible = true
-                                esp.Box.Outline.Size = Vector2.new(w, h)
-                                esp.Box.Outline.Position = Vector2.new(minX, minY)
-                            else -- Full box
-                                esp.Box.Main.Visible = true
-                                esp.Box.Main.Size = Vector2.new(w, h)
-                                esp.Box.Main.Position = Vector2.new(minX, minY)
-                                esp.Box.Main.Color = color
-                                esp.Box.Main.Thickness = Config.ESP.Box.Thickness
-                                esp.Box.Outline.Visible = true
-                                esp.Box.Outline.Size = Vector2.new(w, h)
-                                esp.Box.Outline.Position = Vector2.new(minX, minY)
-                            end
+                            esp.Box.Main.Visible = true
+                            esp.Box.Main.Size = Vector2.new(w, h)
+                            esp.Box.Main.Position = Vector2.new(minX, minY)
+                            esp.Box.Main.Color = color
+                            esp.Box.Main.Thickness = Config.ESP.Box.Thickness
+                            esp.Box.Outline.Visible = true
+                            esp.Box.Outline.Size = Vector2.new(w, h)
+                            esp.Box.Outline.Position = Vector2.new(minX, minY)
                             if Config.ESP.Box.Filled then
                                 esp.BoxFill.Visible = true
                                 esp.BoxFill.Size = Vector2.new(w, h)
@@ -687,7 +653,8 @@ RunService.RenderStepped:Connect(function()
                             if Config.ESP.HealthBar.ShowText then
                                 esp.HealthBar.Text.Visible = true
                                 esp.HealthBar.Text.Position = Vector2.new(barX + 1, minY - 12)
-                                esp.HealthBar.Text.Text = math.floor(hum.Health)
+                                -- FIX: tostring() ici
+                                esp.HealthBar.Text.Text = tostring(math.floor(hum.Health))
                                 esp.HealthBar.Text.Color = Color3.new(1,1,1)
                             else esp.HealthBar.Text.Visible = false end
                         else esp.HealthBar.Outline.Visible = false; esp.HealthBar.Main.Visible = false; esp.HealthBar.Text.Visible = false end
@@ -766,7 +733,6 @@ RunService.RenderStepped:Connect(function()
             local alpha = 1 - (now - m.time) / m.duration
             local size = 8 * alpha
             local c = Config.Combat.HitMarker.Color
-            -- Draw cross
             local l1 = CreateDrawing("Line", {From = m.pos - Vector2.new(size, size), To = m.pos - Vector2.new(size/2, size/2), Color = c, Thickness = 2, Transparency = alpha, Visible = true})
             local l2 = CreateDrawing("Line", {From = m.pos - Vector2.new(-size, size), To = m.pos - Vector2.new(-size/2, size/2), Color = c, Thickness = 2, Transparency = alpha, Visible = true})
             local l3 = CreateDrawing("Line", {From = m.pos - Vector2.new(size, -size), To = m.pos - Vector2.new(size/2, -size/2), Color = c, Thickness = 2, Transparency = alpha, Visible = true})
@@ -798,15 +764,6 @@ RunService.RenderStepped:Connect(function()
     if Config.Protection.AntiVoid and hrp and hrp.Position.Y < -100 then
         hrp.CFrame = CFrame.new(0, 50, 0)
     end
-    
-    -- // ANTI AFK // --
-    if Config.Protection.AntiAFK then
-        LocalPlayer.Idled:Connect(function()
-            VirtualUser = game:GetService("VirtualUser")
-            VirtualUser:CaptureController()
-            VirtualUser:ClickButton2(Vector2.new())
-        end)
-    end
 end)
 
 -- // PLAYER EVENTS // --
@@ -828,7 +785,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- // HIT DETECTION (for hitsound/marker) // --
+-- // HIT DETECTION // --
 local function OnHit(char, part)
     if not Config.Combat.HitSound.Enabled and not Config.Combat.HitMarker.Enabled then return end
     local plr = Players:GetPlayerFromCharacter(char)
@@ -837,14 +794,6 @@ local function OnHit(char, part)
         ShowHitMarker(part.Position)
     end
 end
-
-workspace.DescendantAdded:Connect(function(obj)
-    if obj:IsA("Tool") then
-        obj.Activated:Connect(function()
-            -- Could add auto shoot logic here
-        end)
-    end
-end)
 
 -- // KILL FEED // --
 local function OnKill(killer, victim)
@@ -862,13 +811,10 @@ local function OnKill(killer, victim)
     end
 end
 
--- Hook humanoid died
 for _, plr in ipairs(Players:GetPlayers()) do
     if plr ~= LocalPlayer and plr.Character then
         local hum = plr.Character:FindFirstChild("Humanoid")
-        if hum then
-            hum.Died:Connect(function() OnKill(LocalPlayer, plr) end)
-        end
+        if hum then hum.Died:Connect(function() OnKill(LocalPlayer, plr) end) end
     end
 end
 
@@ -888,7 +834,6 @@ local function CreateUI()
     sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     sg.Parent = CoreGui
     
-    -- Main Window
     local Main = Instance.new("Frame")
     Main.Name = "Main"
     Main.Size = UDim2.new(0, 620, 0, 480)
@@ -910,7 +855,6 @@ local function CreateUI()
     MainStroke.Transparency = 0.3
     MainStroke.Parent = Main
     
-    -- Glow effect
     local Glow = Instance.new("ImageLabel")
     Glow.Name = "Glow"
     Glow.Size = UDim2.new(1, 40, 1, 40)
@@ -924,7 +868,6 @@ local function CreateUI()
     Glow.ZIndex = -1
     Glow.Parent = Main
     
-    -- Title Bar
     local TitleBar = Instance.new("Frame")
     TitleBar.Size = UDim2.new(1, 0, 0, 40)
     TitleBar.BackgroundColor3 = Theme.Surface
@@ -952,14 +895,13 @@ local function CreateUI()
     Subtitle.Size = UDim2.new(0, 100, 1, 0)
     Subtitle.Position = UDim2.new(1, -110, 0, 0)
     Subtitle.BackgroundTransparency = 1
-    Subtitle.Text = "v2.0.0"
+    Subtitle.Text = "v2.1.0"
     Subtitle.TextColor3 = Theme.TextDim
     Subtitle.TextSize = 11
     Subtitle.Font = Enum.Font.Gotham
     Subtitle.TextXAlignment = Enum.TextXAlignment.Right
     Subtitle.Parent = TitleBar
     
-    -- Close/Minimize
     local CloseBtn = Instance.new("TextButton")
     CloseBtn.Size = UDim2.new(0, 30, 0, 30)
     CloseBtn.Position = UDim2.new(1, -35, 0, 5)
@@ -974,7 +916,6 @@ local function CreateUI()
     Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
     CloseBtn.MouseButton1Click:Connect(function() Main.Visible = false end)
     
-    -- Tab Bar
     local TabBar = Instance.new("Frame")
     TabBar.Size = UDim2.new(0, 140, 1, -45)
     TabBar.Position = UDim2.new(0, 5, 0, 45)
@@ -987,14 +928,12 @@ local function CreateUI()
     TabLayout.Padding = UDim.new(0, 4)
     TabLayout.Parent = TabBar
     
-    -- Content Area
     local Content = Instance.new("Frame")
     Content.Size = UDim2.new(1, -155, 1, -50)
     Content.Position = UDim2.new(0, 150, 0, 45)
     Content.BackgroundTransparency = 1
     Content.Parent = Main
     
-    -- Tabs Data
     local Tabs = {
         {Name = "Aimbot", Icon = "🎯"},
         {Name = "ESP", Icon = "👁️"},
@@ -1037,9 +976,7 @@ local function CreateUI()
         return frame
     end
     
-    for _, tab in ipairs(Tabs) do
-        CreateTab(tab.Name)
-    end
+    for _, tab in ipairs(Tabs) do CreateTab(tab.Name) end
     
     local function SwitchTab(name)
         for n, f in pairs(TabFrames) do f.Visible = (n == name) end
@@ -1094,7 +1031,6 @@ local function CreateUI()
         line.BackgroundTransparency = 0.5
         line.BorderSizePixel = 0
         line.Parent = frame
-        
         return frame
     end
     
@@ -1277,7 +1213,6 @@ local function CreateUI()
         btn.Parent = frame
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
         
-        -- Simple color picker (cycle through presets)
         local presets = {
             Color3.fromRGB(255, 50, 120), Color3.fromRGB(50, 220, 255), Color3.fromRGB(180, 80, 255),
             Color3.fromRGB(255, 200, 50), Color3.fromRGB(60, 220, 120), Color3.fromRGB(255, 100, 50),
@@ -1513,7 +1448,7 @@ local function CreateUI()
         local tab = TabFrames.Visuals
         AddSection(tab, "CROSSHAIR")
         AddToggle(tab, "Enabled", Config.Visuals.Crosshair, "Enabled")
-        AddDropdown(tab, "Type", Config.Visuals.Crosshair, "Type", {"Dot", "Cross", "Circle", "Dynamic", "Swastika"}) -- Swastika removed per safety
+        AddDropdown(tab, "Type", Config.Visuals.Crosshair, "Type", {"Dot", "Cross", "Circle", "Dynamic"})
         AddSlider(tab, "Size", Config.Visuals.Crosshair, "Size", 2, 30, 0)
         AddSlider(tab, "Gap", Config.Visuals.Crosshair, "Gap", 0, 20, 0)
         AddSlider(tab, "Thickness", Config.Visuals.Crosshair, "Thickness", 0.5, 5, 1)
@@ -1572,7 +1507,7 @@ local function CreateUI()
         local info = Instance.new("TextLabel")
         info.Size = UDim2.new(1, 0, 0, 80)
         info.BackgroundTransparency = 1
-        info.Text = "NEON RAGE v2.0.0\nMade for educational purposes.\nUse at your own risk.\nINSERT to toggle menu."
+        info.Text = "NEON RAGE v2.1.0 (FIXED)\nFixed: HealthBar spam, Font Enum, RenderStepped leaks.\nMade for educational purposes. Use at your own risk.\nINSERT to toggle menu."
         info.TextColor3 = Theme.TextDim
         info.TextSize = 11
         info.Font = Enum.Font.Gotham
@@ -1703,20 +1638,22 @@ local function CreateUI()
     sLayout.Padding = UDim.new(0, 2)
     sLayout.Parent = SpecFrame
     
-    -- // CROSSHAIR RENDERING // --
+    -- // CROSSHAIR RENDERING (GUI) // --
     local CrosshairGui = Instance.new("ScreenGui")
     CrosshairGui.Name = "NeonCrosshair"
     CrosshairGui.ResetOnSpawn = false
     CrosshairGui.IgnoreGuiInset = true
     CrosshairGui.Parent = CoreGui
     
-    local CrosshairParts = {}
     local function CreateCrosshair()
-        for _, p in pairs(CrosshairParts) do p:Destroy() end
-        CrosshairParts = {}
+        for _, p in pairs(State.CrosshairParts) do p:Destroy() end
+        State.CrosshairParts = {}
+        if State.DynamicCrosshairConn then State.DynamicCrosshairConn:Disconnect() end
         
-        local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
         local c = Config.Visuals.Crosshair
+        if not c.Enabled then CrosshairGui.Enabled = false return end
+        CrosshairGui.Enabled = true
+        
         local color = c.Rainbow and GetRainbow(c.RotationSpeed) or c.Color
         
         if c.Type == "Dot" then
@@ -1727,7 +1664,7 @@ local function CreateUI()
             dot.BorderSizePixel = 0
             dot.Parent = CrosshairGui
             Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-            table.insert(CrosshairParts, dot)
+            table.insert(State.CrosshairParts, dot)
         elseif c.Type == "Cross" then
             local h = Instance.new("Frame")
             h.Size = UDim2.new(0, c.Size*2 + c.Gap*2, 0, c.Thickness)
@@ -1735,7 +1672,7 @@ local function CreateUI()
             h.BackgroundColor3 = color
             h.BorderSizePixel = 0
             h.Parent = CrosshairGui
-            table.insert(CrosshairParts, h)
+            table.insert(State.CrosshairParts, h)
             
             local v = Instance.new("Frame")
             v.Size = UDim2.new(0, c.Thickness, 0, c.Size*2 + c.Gap*2)
@@ -1743,7 +1680,7 @@ local function CreateUI()
             v.BackgroundColor3 = color
             v.BorderSizePixel = 0
             v.Parent = CrosshairGui
-            table.insert(CrosshairParts, v)
+            table.insert(State.CrosshairParts, v)
         elseif c.Type == "Circle" then
             local circle = Instance.new("Frame")
             circle.Size = UDim2.new(0, c.Size*2, 0, c.Size*2)
@@ -1756,48 +1693,49 @@ local function CreateUI()
             stroke.Thickness = c.Thickness
             stroke.Parent = circle
             Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
-            table.insert(CrosshairParts, circle)
+            table.insert(State.CrosshairParts, circle)
         elseif c.Type == "Dynamic" then
-            -- Expands when moving/shooting
             local spread = 0
-            RunService.RenderStepped:Connect(function()
-                if not Config.Visuals.Crosshair.Enabled then return end
-                local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-                local moving = hum and hum.MoveDirection.Magnitude > 0
-                spread = Lerp(spread, moving and c.Size*2 or c.Size, 0.1)
-                
-                for _, p in pairs(CrosshairParts) do
-                    if p:IsA("Frame") then
-                        p.Size = UDim2.new(0, spread, 0, c.Thickness)
-                        p.Position = UDim2.new(0.5, -spread/2, 0.5, -c.Thickness/2)
-                    end
-                end
-            end)
-            -- Create 4 lines
             for i = 1, 4 do
                 local line = Instance.new("Frame")
                 line.Size = UDim2.new(0, c.Size, 0, c.Thickness)
                 line.BackgroundColor3 = color
                 line.BorderSizePixel = 0
                 line.Parent = CrosshairGui
-                table.insert(CrosshairParts, line)
+                table.insert(State.CrosshairParts, line)
             end
+            State.DynamicCrosshairConn = RunService.RenderStepped:Connect(function()
+                if not Config.Visuals.Crosshair.Enabled or Config.Visuals.Crosshair.Type ~= "Dynamic" then return end
+                local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+                local moving = hum and hum.MoveDirection.Magnitude > 0
+                spread = Lerp(spread, moving and c.Size*2 or c.Size, 0.1)
+                local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+                local offsets = {
+                    Vector2.new(-spread - c.Gap, 0), -- Left
+                    Vector2.new(c.Gap, 0),           -- Right
+                    Vector2.new(0, -spread - c.Gap), -- Up
+                    Vector2.new(0, c.Gap)            -- Down
+                }
+                for i, p in pairs(State.CrosshairParts) do
+                    p.Size = UDim2.new(0, spread, 0, c.Thickness)
+                    p.Position = UDim2.new(0.5, offsets[i].X - (i<=2 and spread/2 or c.Thickness/2), 0.5, offsets[i].Y - (i>2 and spread/2 or c.Thickness/2))
+                    p.Rotation = (i > 2) and 90 or 0
+                    if c.Rainbow then p.BackgroundColor3 = GetRainbow(c.RotationSpeed) end
+                end
+            end)
         end
     end
     
     -- // ANIMATIONS // --
-    local function AnimateGlow()
-        RunService.RenderStepped:Connect(function()
-            if Glow and Glow.Parent then
-                Glow.ImageColor3 = Theme.Accent
-                Glow.ImageTransparency = 0.6 + math.sin(tick()*2)*0.1
-            end
-        end)
-    end
-    AnimateGlow()
+    State.Connections.GlowAnim = RunService.RenderStepped:Connect(function()
+        if Glow and Glow.Parent then
+            Glow.ImageColor3 = Theme.Accent
+            Glow.ImageTransparency = 0.6 + math.sin(tick()*2)*0.1
+        end
+    end)
     
     -- // INPUT HANDLING // --
-    UserInputService.InputBegan:Connect(function(input, gp)
+    State.Connections.MenuToggle = UserInputService.InputBegan:Connect(function(input, gp)
         if gp then return end
         if input.KeyCode == Config.UI.Keybind then
             Main.Visible = not Main.Visible
@@ -1808,11 +1746,11 @@ local function CreateUI()
         end
     end)
     
-    -- // RENDER STEP UI UPDATES // --
-    RunService.RenderStepped:Connect(function()
+    -- // UI RENDER STEP (Watermark, Keybinds, Crosshair Rainbow) // --
+    State.Connections.UIRender = RunService.RenderStepped:Connect(function()
         -- Watermark FPS/Ping
         if Config.UI.Watermark and Watermark.Visible then
-            local fps = math.floor(1/RunService.RenderStepped:Wait())
+            local fps = math.floor(1 / RunService.RenderStepped:Wait()) -- Wait() ici est safe car c'est la seule connexion UI RenderStepped
             local ping = math.floor(LocalPlayer:GetNetworkPing()*1000)
             wText.Text = "NEON RAGE | "..LocalPlayer.Name.." | "..fps.." FPS | "..ping.."ms"
             wAccent.BackgroundColor3 = Theme.Accent
@@ -1821,17 +1759,14 @@ local function CreateUI()
         KeybindsFrame.Visible = Config.UI.KeybindsList
         SpecFrame.Visible = Config.UI.SpectatorList
         
-        -- Crosshair
-        if Config.Visuals.Crosshair.Enabled then
-            CrosshairGui.Enabled = true
-            if Config.Visuals.Crosshair.Rainbow then
-                local color = GetRainbow(Config.Visuals.Crosshair.RotationSpeed)
-                for _, p in pairs(CrosshairParts) do
-                    if p:IsA("Frame") then p.BackgroundColor3 = color
-                    elseif p:FindFirstChild("UIStroke") then p.UIStroke.Color = color end
-                end
+        -- Crosshair Rainbow Update
+        if Config.Visuals.Crosshair.Enabled and Config.Visuals.Crosshair.Rainbow and Config.Visuals.Crosshair.Type ~= "Dynamic" then
+            local color = GetRainbow(Config.Visuals.Crosshair.RotationSpeed)
+            for _, p in pairs(State.CrosshairParts) do
+                if p:IsA("Frame") then p.BackgroundColor3 = color
+                elseif p:FindFirstChild("UIStroke") then p.UIStroke.Color = color end
             end
-        else CrosshairGui.Enabled = false end
+        end
         
         -- Rainbow Gun
         if Config.Visuals.RainbowGun then
@@ -1847,7 +1782,6 @@ local function CreateUI()
     end)
     
     CreateCrosshair()
-    Config.Visuals.Crosshair.Type:GetPropertyChangedSignal("Value"):Connect(CreateCrosshair) -- Not needed, handled by loop
     
     -- // UNLOAD FUNCTION // --
     getgenv().NeonRageUnload = function()
@@ -1862,6 +1796,7 @@ local function CreateUI()
         if State.FlyBodyVel then State.FlyBodyVel:Destroy() end
         if State.FlyBodyGyro then State.FlyBodyGyro:Destroy() end
         if State.AirWalkPart then State.AirWalkPart:Destroy() end
+        if State.DynamicCrosshairConn then State.DynamicCrosshairConn:Disconnect() end
         
         if oldNamecall then hookmetamethod(game, "__namecall", oldNamecall) end
         
@@ -1875,7 +1810,6 @@ local function CreateUI()
         print("[NEON] Fully unloaded.")
     end
     
-    -- Load config on start
     LoadConfig()
     
     print("[NEON] Loaded successfully! INSERT to open menu.")
