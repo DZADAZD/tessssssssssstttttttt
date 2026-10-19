@@ -1,18 +1,10 @@
 --[[
-    ZYROSCRIPT v3.5 — Anime Dice Trade Freeze (DRAG & DROP ADDED)
-    • RightShift = ouvrir/fermer
-    • Glisser la fenêtre via le HEADER (barre du haut)
-    • Capture args via __namecall
-    • UI Glassmorphism + Dump Remotes
+    ZYROSCRIPT v3.5b — Anime Dice Trade Freeze (NO EMOJIS / SAFE)
+    RightShift = ouvrir/fermer | Drag Header = deplacer
 ]]--
 
--- ============================================================
--- POLYFILLS & UTILS
--- ============================================================
-local function str_trim(s)
-    return s:match("^%s*(.-)%s*$")
-end
-
+-- POLYFILLS
+local function str_trim(s) return s:match("^%s*(.-)%s*$") end
 local function serialize(t)
     if type(t) ~= "table" then return tostring(t) end
     local out = {}
@@ -23,14 +15,9 @@ local function serialize(t)
     end
     return "{ " .. table.concat(out, ", ") .. " }"
 end
+local function log(msg) print("[" .. os.date("%H:%M:%S") .. "] ZYRO :: " .. msg) end
 
-local function log(msg)
-    print("[" .. os.date("%H:%M:%S") .. "] ZYRO :: " .. msg)
-end
-
--- ============================================================
 -- SERVICES
--- ============================================================
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
@@ -38,9 +25,7 @@ local TweenService      = game:GetService("TweenService")
 local UserInputService  = game:GetService("UserInputService")
 local LocalPlayer       = Players.LocalPlayer
 
--- ============================================================
 -- CONFIG
--- ============================================================
 local CONFIG = {
     acceptRemote   = "TradeAccept",
     addRemote      = "TradeAddItem",
@@ -51,9 +36,7 @@ local CONFIG = {
     freezeInterval = 0.35,
 }
 
--- ============================================================
--- CAPTURE UNIVERSELLE VIA __NAMECALL
--- ============================================================
+-- CAPTURE REMOTES
 local allRemotes = {}
 local capturedArgs = {}
 local incomingArgs = {}
@@ -65,9 +48,7 @@ local function scanRemotes()
             table.insert(allRemotes, obj)
             if obj:IsA("RemoteEvent") then
                 pcall(function()
-                    obj.OnClientEvent:Connect(function(...)
-                        incomingArgs[obj.Name] = {...}
-                    end)
+                    obj.OnClientEvent:Connect(function(...) incomingArgs[obj.Name] = {...} end)
                 end)
             end
         end
@@ -77,9 +58,7 @@ local function scanRemotes()
 end
 
 local function getRemote(name)
-    for _, r in ipairs(allRemotes) do
-        if r.Name == name then return r end
-    end
+    for _, r in ipairs(allRemotes) do if r.Name == name then return r end end
     return nil
 end
 
@@ -87,32 +66,30 @@ local hookActive = false
 local function enableNamecallHook()
     if hookActive then return end
     local mt = getrawmetatable(game)
-    if not mt then log("⚠️ getrawmetatable non dispo"); return end
+    if not mt then log("WARN: getrawmetatable missing"); return end
     local oldNamecall = mt.__namecall
     local setreadonly = make_writeable or setreadonly
-    if not setreadonly then log("⚠️ make_writeable/setreadonly non dispo"); return end
+    if not setreadonly then log("WARN: setreadonly missing"); return end
 
-    local success = pcall(function()
+    local ok = pcall(function()
         setreadonly(mt, false)
         mt.__namecall = newcclosure(function(self, ...)
             local method = getnamecallmethod()
             local args = {...}
             if (method == "FireServer" or method == "InvokeServer") and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
                 capturedArgs[self.Name] = args
-                log("📥 Capturé '" .. self.Name .. "' (" .. method .. ") : " .. serialize(args))
+                log("CAPTURED '" .. self.Name .. "' (" .. method .. ") : " .. serialize(args))
             end
             return oldNamecall(self, ...)
         end)
         setreadonly(mt, true)
         hookActive = true
-        log("✅ Hook __namecall activé — fais tes actions manuelles dans le trade")
+        log("HOOK __namecall ACTIVE")
     end)
-    if not success then log("❌ Échec hook __namecall — fallback : args manuels dans CONFIG") end
+    if not ok then log("HOOK FAILED - using CONFIG fallback") end
 end
 
--- ============================================================
 -- ACTIONS
--- ============================================================
 local targetPlayer = nil
 local freezeRunning = false
 
@@ -131,10 +108,10 @@ local function setFreeze(on)
     freezeRunning = on
     if not on then return end
     local r = getRemote(CONFIG.setListRemote)
-    if not r then log("❌ Freeze : remote '" .. CONFIG.setListRemote .. "' introuvable → clique 🔍 Dump"); return end
+    if not r then log("ERR: Freeze remote missing -> click Dump"); return end
     local args = getArgs("setListArgs")
-    if #args == 0 then log("⚠️ Freeze : args AUTO vides — fais 1 ajout manuel pour capturer"); end
-    log("❄️ Freeze ON — re-fire '" .. r.Name .. "' toutes les " .. CONFIG.freezeInterval .. "s")
+    if #args == 0 then log("WARN: Freeze args empty - do manual add first") end
+    log("FREEZE ON -> re-fire " .. r.Name)
     task.spawn(function()
         local last = 0
         while freezeRunning do
@@ -151,10 +128,10 @@ end
 local function setForceAccept(on)
     if not on then return end
     local r = getRemote(CONFIG.acceptRemote)
-    if not r then log("❌ Force Accept : remote '" .. CONFIG.acceptRemote .. "' introuvable → clique 🔍 Dump"); return end
+    if not r then log("ERR: Accept remote missing -> click Dump"); return end
     local args = getArgs("acceptArgs")
-    if #args == 0 then log("⚠️ Force Accept : args AUTO vides — fais 1 accept manuel pour capturer"); end
-    log("✅ Force Accept → fire '" .. r.Name .. "' : " .. serialize(args))
+    if #args == 0 then log("WARN: Accept args empty - do manual accept first") end
+    log("FORCE ACCEPT -> fire " .. r.Name)
     if r:IsA("RemoteEvent") then pcall(function() r:FireServer(unpack(args)) end)
     else pcall(function() r:InvokeServer(unpack(args)) end) end
 end
@@ -162,10 +139,10 @@ end
 local function setAutoAdd(on)
     if not on then return end
     local r = getRemote(CONFIG.addRemote)
-    if not r then log("❌ Auto Add : remote '" .. CONFIG.addRemote .. "' introuvable → clique 🔍 Dump"); return end
+    if not r then log("ERR: Add remote missing -> click Dump"); return end
     local args = getArgs("addArgs")
-    if #args == 0 then log("⚠️ Auto Add : args AUTO vides — fais 1 ajout manuel pour capturer"); end
-    log("📦 Auto Add → fire '" .. r.Name .. "' : " .. serialize(args))
+    if #args == 0 then log("WARN: Add args empty - do manual add first") end
+    log("AUTO ADD -> fire " .. r.Name)
     if r:IsA("RemoteEvent") then pcall(function() r:FireServer(unpack(args)) end) end
 end
 
@@ -181,16 +158,14 @@ end
 
 local function dumpRemotes()
     scanRemotes()
-    log("🔍 === DUMP (" .. #allRemotes .. " remotes) — cherche trade/accept/add ===")
+    log("DUMP (" .. #allRemotes .. " remotes) - look for trade/accept/add")
     for _, r in ipairs(allRemotes) do
-        log(string.format("  %-4s  %s", (r:IsA("RemoteFunction") and "RF" or "RE"), r:GetFullName()))
+        log(string.format("  %s  %s", (r:IsA("RemoteFunction") and "RF" or "RE"), r:GetFullName()))
     end
-    log("🔍 === FIN — copie les noms dans le CONFIG en haut du script ===")
+    log("COPY NAMES INTO CONFIG AT TOP")
 end
 
--- ============================================================
 -- UI HELPERS
--- ============================================================
 local C = {
     BG = Color3.fromRGB(10,14,26), CARD = Color3.fromRGB(18,24,42),
     CARD_HOVER = Color3.fromRGB(24,32,56), BORDER = Color3.fromRGB(40,55,90),
@@ -254,12 +229,9 @@ local function createToggle(parent, name, icon, order, callback)
     return {row=row, isEnabled=function() return enabled end, setEnabled=set}
 end
 
--- ============================================================
 -- UI BUILD
--- ============================================================
 local screenGui, mainFrame, headerGlow, frameGlow
 local uiOpen = false
--- Position de départ (sera mise à jour par le drag)
 local startPos = UDim2.fromScale(0.65, 0.5)
 local CLOSED_POS = UDim2.fromScale(1.05, 0.5)
 
@@ -314,9 +286,7 @@ local function createUI()
     mainPad.PaddingLeft = UDim.new(0,16); mainPad.PaddingRight = UDim.new(0,16)
     mainPad.Parent = mainFrame
 
-    -- ============================================================
-    -- HEADER (zone de drag)
-    -- ============================================================
+    -- HEADER (DRAG ZONE)
     local header = Instance.new("Frame")
     header.Name="Header"; header.Size=UDim2.new(1,0,0,56); header.BackgroundColor3=C.HEADER_TOP; header.BorderSizePixel=0; header.LayoutOrder=1; header.Parent=mainFrame
     corner(header,12); grad(header, C.HEADER_TOP, C.HEADER_BOT, 90); stroke(header, C.BORDER, 1)
@@ -326,25 +296,23 @@ local function createUI()
     headerGlow.BackgroundColor3=C.GLOW; headerGlow.BackgroundTransparency=0.85; headerGlow.BorderSizePixel=0; headerGlow.ZIndex=-1
     headerGlow.Parent=header; corner(headerGlow,15)
 
-    lbl(header, {text="🎲", size=26, pos=UDim2.new(0,14,0,0), size2d=UDim2.new(0,36,1,0), xalign=Enum.TextXAlignment.Center})
+    lbl(header, {text="[Z]", size=26, pos=UDim2.new(0,14,0,0), size2d=UDim2.new(0,36,1,0), xalign=Enum.TextXAlignment.Center})
     lbl(header, {text="ZYROSCRIPT", size=18, color=C.TEXT, font=Enum.Font.GothamBold, pos=UDim2.new(0,52,0,0), size2d=UDim2.new(1,-120,0.5,0)})
     lbl(header, {text="Anime Dice Trade Freeze", size=11, color=C.TEXT_SEC, pos=UDim2.new(0,52,0.5,0), size2d=UDim2.new(1,-120,0.5,0)})
 
     local vBadge = Instance.new("Frame")
     vBadge.Size=UDim2.fromOffset(42,20); vBadge.Position=UDim2.new(1,-56,0.5,0); vBadge.AnchorPoint=Vector2.new(0,0.5)
     vBadge.BackgroundColor3=C.ACCENT_DIM; vBadge.BackgroundTransparency=0.3; vBadge.BorderSizePixel=0; vBadge.Parent=header; corner(vBadge,10)
-    lbl(vBadge, {text="v3.5", size=10, color=C.TEXT, font=Enum.Font.GothamBold, size2d=UDim2.fromScale(1,1), xalign=Enum.TextXAlignment.Center})
+    lbl(vBadge, {text="v3.5b", size=10, color=C.TEXT, font=Enum.Font.GothamBold, size2d=UDim2.fromScale(1,1), xalign=Enum.TextXAlignment.Center})
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size=UDim2.fromOffset(28,28); closeBtn.Position=UDim2.new(1,-34,0.5,0); closeBtn.AnchorPoint=Vector2.new(0,0.5)
-    closeBtn.BackgroundColor3=Color3.fromRGB(30,40,70); closeBtn.Text="✕"; closeBtn.TextColor3=C.TEXT_SEC; closeBtn.Font=Enum.Font.GothamBold; closeBtn.TextSize=14; closeBtn.BorderSizePixel=0; closeBtn.Parent=header; corner(closeBtn,8)
+    closeBtn.BackgroundColor3=Color3.fromRGB(30,40,70); closeBtn.Text="X"; closeBtn.TextColor3=C.TEXT_SEC; closeBtn.Font=Enum.Font.GothamBold; closeBtn.TextSize=14; closeBtn.BorderSizePixel=0; closeBtn.Parent=header; corner(closeBtn,8)
     closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn, TweenInfo.new(0.1), {BackgroundColor3=Color3.fromRGB(80,40,40), TextColor3=C.DANGER}):Play() end)
     closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn, TweenInfo.new(0.1), {BackgroundColor3=Color3.fromRGB(30,40,70), TextColor3=C.TEXT_SEC}):Play() end)
     closeBtn.MouseButton1Click:Connect(toggleUI)
 
-    -- ============================================================
-    // DRAG & DROP LOGIC (sur le header)
-    // ============================================================
+    -- DRAG LOGIC
     local dragging = false
     local dragStart = nil
     local startPosDrag = nil
@@ -360,13 +328,9 @@ local function createUI()
     header.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - dragStart
-            -- On calcule la nouvelle position en offset (pixels) depuis le coin haut-gauche de l'écran
-            -- mainFrame.AnchorPoint = (0, 0.5) donc Position = (X, 0.5, 0, Yoffset)
-            -- Mais comme on a fait startPos en Scale, on convertit en Offset pour le drag fluide
             local viewport = workspace.CurrentCamera.ViewportSize
             local newX = startPosDrag.X.Offset + delta.X
             local newY = startPosDrag.Y.Offset + delta.Y
-            -- Clamp pour ne pas sortir de l'écran
             newX = math.clamp(newX, 0, viewport.X - mainFrame.AbsoluteSize.X)
             newY = math.clamp(newY, -mainFrame.AbsoluteSize.Y/2, viewport.Y - mainFrame.AbsoluteSize.Y/2)
             mainFrame.Position = UDim2.fromOffset(newX, newY)
@@ -376,7 +340,6 @@ local function createUI()
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
-            -- Sauvegarde la position pour la prochaine ouverture
             startPos = mainFrame.Position
         end
     end)
@@ -384,14 +347,14 @@ local function createUI()
     -- TARGET
     local targetSec = Instance.new("Frame")
     targetSec.Name="TargetSec"; targetSec.Size=UDim2.new(1,0,0,100); targetSec.BackgroundTransparency=1; targetSec.LayoutOrder=2; targetSec.Parent=mainFrame
-    lbl(targetSec, {text="⚡  TARGET PLAYER", size=12, color=C.ACCENT, font=Enum.Font.GothamBold, size2d=UDim2.new(1,0,0,16)})
+    lbl(targetSec, {text="TARGET PLAYER", size=12, color=C.ACCENT, font=Enum.Font.GothamBold, size2d=UDim2.new(1,0,0,16)})
 
     local inputRow = Instance.new("Frame")
     inputRow.Size=UDim2.new(1,0,0,40); inputRow.Position=UDim2.new(0,0,0,24); inputRow.BackgroundTransparency=1; inputRow.Parent=targetSec
 
     local searchBox = Instance.new("TextBox")
     searchBox.Size=UDim2.new(1,-100,1,0); searchBox.BackgroundColor3=C.INPUT_BG; searchBox.BackgroundTransparency=0.1
-    searchBox.PlaceholderText="Nom ou UserId du joueur…"; searchBox.PlaceholderColor3=C.TEXT_DIM; searchBox.TextColor3=C.TEXT
+    searchBox.PlaceholderText="Nom ou UserId du joueur..."; searchBox.PlaceholderColor3=C.TEXT_DIM; searchBox.TextColor3=C.TEXT
     searchBox.Font=Enum.Font.Gotham; searchBox.TextSize=13; searchBox.BorderSizePixel=0; searchBox.ClearTextOnFocus=false; searchBox.Parent=inputRow
     corner(searchBox,8); local sStroke = stroke(searchBox, C.BORDER, 1)
 
@@ -405,31 +368,31 @@ local function createUI()
     searchBtn.MouseLeave:Connect(function() TweenService:Create(searchBtn, TweenInfo.new(0.1), {BackgroundColor3=C.ACCENT}):Play() end)
 
     local targetStatus = Instance.new("TextLabel")
-    targetStatus.BackgroundTransparency=1; targetStatus.Text="En attente de cible…"; targetStatus.TextColor3=C.TEXT_DIM; targetStatus.Font=Enum.Font.Gotham; targetStatus.TextSize=11
+    targetStatus.BackgroundTransparency=1; targetStatus.Text="En attente de cible..."; targetStatus.TextColor3=C.TEXT_DIM; targetStatus.Font=Enum.Font.Gotham; targetStatus.TextSize=11
     targetStatus.Size=UDim2.new(1,0,0,14); targetStatus.Position=UDim2.new(0,0,1,-18); targetStatus.TextXAlignment=Enum.TextXAlignment.Left; targetStatus.Parent=targetSec
 
     -- OPTIONS
     local optSec = Instance.new("Frame")
     optSec.Name="OptSec"; optSec.Size=UDim2.new(1,0,0,190); optSec.BackgroundTransparency=1; optSec.LayoutOrder=3; optSec.Parent=mainFrame
-    lbl(optSec, {text="⚙️  OPTIONS", size=12, color=C.ACCENT, font=Enum.Font.GothamBold, size2d=UDim2.new(1,0,0,16)})
+    lbl(optSec, {text="OPTIONS", size=12, color=C.ACCENT, font=Enum.Font.GothamBold, size2d=UDim2.new(1,0,0,16)})
 
     local togglesCont = Instance.new("Frame")
     togglesCont.Size=UDim2.new(1,0,0,160); togglesCont.Position=UDim2.new(0,0,0,24); togglesCont.BackgroundTransparency=1; togglesCont.Parent=optSec
     local tList = Instance.new("UIListLayout"); tList.Padding=UDim.new(0,6); tList.SortOrder=Enum.SortOrder.LayoutOrder; tList.Parent=togglesCont
 
-    local tFreeze = createToggle(togglesCont, "Freeze Trade", "❄️", 1, setFreeze)
-    local tForce  = createToggle(togglesCont, "Force Accept", "✅", 2, setForceAccept)
-    local tAuto   = createToggle(togglesCont, "Auto Add All", "📦", 3, setAutoAdd)
+    local tFreeze = createToggle(togglesCont, "Freeze Trade", "[F]", 1, setFreeze)
+    local tForce  = createToggle(togglesCont, "Force Accept", "[A]", 2, setForceAccept)
+    local tAuto   = createToggle(togglesCont, "Auto Add All", "[+]", 3, setAutoAdd)
 
     -- FOOTER
     local footer = Instance.new("Frame")
     footer.Name="Footer"; footer.Size=UDim2.new(1,0,0,32); footer.BackgroundTransparency=1; footer.LayoutOrder=4; footer.Parent=mainFrame
 
-    lbl(footer, {text="🔑  RightShift = ouvrir/fermer  |  🖱️ Glisser le header pour déplacer", size=10, color=C.TEXT_DIM, font=Enum.Font.Gotham, size2d=UDim2.new(1,-130,1,0), xalign=Enum.TextXAlignment.Left})
+    lbl(footer, {text="RightShift = Ouvrir/Fermer | Glisser Header = Deplacer", size=10, color=C.TEXT_DIM, font=Enum.Font.Gotham, size2d=UDim2.new(1,-130,1,0), xalign=Enum.TextXAlignment.Left})
 
     local dumpBtn = Instance.new("TextButton")
     dumpBtn.Size=UDim2.new(0,110,0,24); dumpBtn.Position=UDim2.new(1,-110,0.5,0); dumpBtn.AnchorPoint=Vector2.new(0,0.5)
-    dumpBtn.BackgroundColor3=C.CARD; dumpBtn.Text="🔍 Dump Remotes"; dumpBtn.TextColor3=C.ACCENT; dumpBtn.Font=Enum.Font.GothamBold; dumpBtn.TextSize=11; dumpBtn.BorderSizePixel=0; dumpBtn.Parent=footer
+    dumpBtn.BackgroundColor3=C.CARD; dumpBtn.Text="Dump Remotes"; dumpBtn.TextColor3=C.ACCENT; dumpBtn.Font=Enum.Font.GothamBold; dumpBtn.TextSize=11; dumpBtn.BorderSizePixel=0; dumpBtn.Parent=footer
     corner(dumpBtn,8); stroke(dumpBtn, C.BORDER, 1)
     dumpBtn.MouseEnter:Connect(function() TweenService:Create(dumpBtn, TweenInfo.new(0.1), {BackgroundColor3=C.CARD_HOVER}):Play() end)
     dumpBtn.MouseLeave:Connect(function() TweenService:Create(dumpBtn, TweenInfo.new(0.1), {BackgroundColor3=C.CARD}):Play() end)
@@ -443,11 +406,11 @@ local function createUI()
         local found = resolveTarget(searchBox.Text)
         if found then
             targetPlayer = found; searchBox.Text = found.Name
-            targetStatus.Text = "✅  Cible : " .. found.Name; targetStatus.TextColor3 = C.SUCCESS
+            targetStatus.Text = "CIBLE: " .. found.Name; targetStatus.TextColor3 = C.SUCCESS
             if tForce.isEnabled() then setForceAccept(true) end
             if tAuto.isEnabled() then setAutoAdd(true) end
         else
-            targetStatus.Text = "❌  Joueur non trouvé"; targetStatus.TextColor3 = C.DANGER
+            targetStatus.Text = "JOUEUR INTROUVABLE"; targetStatus.TextColor3 = C.DANGER
         end
     end)
 
@@ -455,13 +418,17 @@ local function createUI()
     return {toggles={["Freeze Trade"]=tFreeze, ["Force Accept"]=tForce, ["Auto Add All"]=tAuto}}
 end
 
--- ============================================================
--- START
--- ============================================================
-local ui = createUI()
-scanRemotes()
-enableNamecallHook()
+-- START (wrapped in pcall for safety)
+local ok, err = pcall(function()
+    local ui = createUI()
+    scanRemotes()
+    enableNamecallHook()
+    log("READY - RightShift to open | Drag Header to move")
+    log("STEP 1: Open trade, do 1 manual add + 1 manual accept")
+    log("STEP 2: Click Dump Remotes, copy names to CONFIG (top)")
+    log("STEP 3: Re-execute, enable toggles")
+end)
 
-log("✅ ZYROSCRIPT v3.5 prêt — RightShift pour ouvrir, glisser le header pour déplacer")
-log("💡 Ouvre un trade, fais 1 ajout + 1 accept MANUEL → les args apparaissent en console")
-log("💡 Puis clique 🔍 Dump Remotes, mets les noms dans CONFIG (en haut), et active les toggles")
+if not ok then
+    warn("ZYROSCRIPT FATAL ERROR: " .. tostring(err))
+end
