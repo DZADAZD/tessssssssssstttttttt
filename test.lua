@@ -1,76 +1,62 @@
--- AUTO PUMPKIN/CANDY — UNIVERSAL (essaie Prompt, Click, Touch, Remote)
+-- SCANNER EVENT HALLOWEEN — Colle, Execute, approche-toi d'une citrouille/maison
+-- Ça va lister TOUS les objets interactifs dans un rayon de 50 studs
+
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
-local RUNNING = true
-local RADIUS = 40
-local KEYWORDS = {"pumpkin","citrouille","candy","bonbon","halloween","treat","sweet","lollipop"}
+local RADIUS = 50
+local scanned = {}
 
-local function match(name)
-    name = name:lower()
-    for _,k in ipairs(KEYWORDS) do if name:find(k) then return true end end
-    return false
-end
+print("=== SCANNER DÉMARRÉ (rayon " .. RADIUS .. " studs) ===")
+print("Approche-toi d'une citrouille/maison/bonbon...")
 
-print("[UNIVERSAL] Démarré. F9 pour logs.")
-
--- 1. ProximityPrompt + ClickDetector loop
 task.spawn(function()
-    while RUNNING do
-        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    while true do
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if hrp then
             for _, obj in ipairs(Workspace:GetDescendants()) do
-                local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-                if part and (part.Position - hrp.Position).Magnitude <= RADIUS then
-                    local fullName = (obj.Name .. " " .. (obj.Parent and obj.Parent.Name or "")):lower()
-                    if match(fullName) then
-                        if obj:IsA("ProximityPrompt") then
-                            pcall(fireproximityprompt, obj, 1)
-                        elseif obj:IsA("ClickDetector") then
-                            pcall(fireclickdetector, obj)
+                if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("Part") then
+                    local dist = (obj.Position - hrp.Position).Magnitude
+                    if dist <= RADIUS then
+                        local key = obj:GetFullName()
+                        if not scanned[key] then
+                            scanned[key] = true
+                            local info = {}
+                            table.insert(info, "Dist: " .. math.floor(dist))
+                            table.insert(info, "Class: " .. obj.ClassName)
+                            table.insert(info, "Name: " .. obj.Name)
+                            table.insert(info, "Parent: " .. (obj.Parent and obj.Parent.Name or "nil"))
+                            
+                            -- Cherche ce qui rend l'objet interactif
+                            local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt")
+                            local click = obj:FindFirstChildWhichIsA("ClickDetector")
+                            local touch = obj:FindFirstChildWhichIsA("TouchInterest") or obj:FindFirstChildWhichIsA("TouchTransmitter")
+                            local script = obj:FindFirstChildWhichIsA("Script") or obj:FindFirstChildWhichIsA("LocalScript")
+                            local remote = obj:FindFirstChildWhichIsA("RemoteEvent") or obj:FindFirstChildWhichIsA("RemoteFunction")
+                            
+                            if prompt then table.insert(info, "🟢 ProximityPrompt: '" .. prompt.Name .. "' (Action: " .. prompt.ActionText .. ")") end
+                            if click then table.insert(info, "🔵 ClickDetector: '" .. click.Name .. "'") end
+                            if touch then table.insert(info, "🟡 TouchInterest/TouchTransmitter") end
+                            if script then table.insert(info, "🟣 Script: '" .. script.Name .. "'") end
+                            if remote then table.insert(info, "🔴 Remote: '" .. remote.Name .. "'") end
+                            
+                            -- Attributs utiles
+                            for _, attr in ipairs(obj:GetAttributes()) do
+                                table.insert(info, "🏷️ Attr " .. attr .. " = " .. tostring(obj:GetAttribute(attr)))
+                            end
+                            
+                            if #info > 4 then -- Affiche seulement s'il y a un truc interactif
+                                print("--- OBJET INTERACTIF TROUVÉ ---")
+                                for _, line in ipairs(info) do print(line) end
+                                print("-------------------------------")
+                            end
                         end
                     end
                 end
             end
         end
-        task.wait(0.3)
+        task.wait(2) -- Scan toutes les 2s
     end
 end)
-
--- 2. TouchInterest TP (moins fréquent)
-task.spawn(function()
-    while RUNNING do
-        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            for _, part in ipairs(Workspace:GetDescendants()) do
-                if part:IsA("BasePart") and match(part.Name) and part:FindFirstChildWhichIsA("TouchInterest") then
-                    pcall(function() hrp.CFrame = part.CFrame + Vector3.new(0,3,0) end)
-                    task.wait(0.4)
-                end
-            end
-        end
-        task.wait(1)
-    end
-end)
-
--- 3. Remote Sniffer (pour info)
-local mt = getrawmetatable(game)
-if mt then
-    local old = mt.__namecall
-    local sr = make_writeable or setreadonly
-    if sr then pcall(function()
-        sr(mt, false)
-        mt.__namecall = newcclosure(function(self, ...)
-            if (getnamecallmethod()=="FireServer" or getnamecallmethod()=="InvokeServer") and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
-                local n=self.Name:lower()
-                if n:find("collect") or n:find("pumpkin") or n:find("candy") or n:find("halloween") or n:find("treat") then
-                    print("[REMOTE SNIFF] "..self.Name.." -> "..table.concat({...}, ", "))
-                end
-            end
-            return old(self, ...)
-        end)
-        sr(mt, true)
-    end) end
-end
